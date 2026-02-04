@@ -32,8 +32,8 @@ class Config:
     # Session configuration
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'
-    # Set to True in production with HTTPS
-    SESSION_COOKIE_SECURE = False
+    # Auto-enable secure cookies in production (requires HTTPS)
+    SESSION_COOKIE_SECURE = os.getenv('FLASK_ENV') == 'production'
 
     # Session timeout (8 hours)
     PERMANENT_SESSION_LIFETIME = timedelta(hours=8)

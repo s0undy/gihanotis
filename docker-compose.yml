@@ -1,5 +1,5 @@
 services:
-  # PostgreSQL Database
+  # PostgreSQL Database (internal only - not exposed to host)
   db:
     image: postgres:15-alpine
     container_name: gihanotis-db
@@ -11,17 +11,17 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
-    ports:
-      - "5432:5432"
+    expose:
+      - "5432"
     networks:
-      - gihanotis-network
+      - gihanotis-internal
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-gihanotis_user} -d ${DB_NAME:-gihanotis}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # Flask Application
+  # Flask Application (internal only - accessed via nginx)
   web:
     build:
       context: .
@@ -42,13 +42,13 @@ services:
       # Flask configuration
       SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
       FLASK_ENV: ${FLASK_ENV:-development}
-    ports:
-      - "5000:5000"
+    expose:
+      - "5000"
     depends_on:
       db:
         condition: service_healthy
     networks:
-      - gihanotis-network
+      - gihanotis-internal
     volumes:
       # Mount source code for development (comment out for production)
       - ./app.py:/app/app.py
@@ -58,13 +58,32 @@ services:
       - ./templates:/app/templates
       - ./static:/app/static
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/public/requests').read()"]
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nginx Reverse Proxy (only externally accessible service)
+  nginx:
+    image: nginx:alpine
+    container_name: gihanotis-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - web
+    networks:
+      - gihanotis-internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 30s
       timeout: 10s
       retries: 3
 
 networks:
-  gihanotis-network:
+  gihanotis-internal:
     driver: bridge
 
 volumes:
