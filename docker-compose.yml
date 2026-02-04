@@ -1,0 +1,72 @@
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: gihanotis-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-gihanotis}
+      POSTGRES_USER: ${DB_USER:-gihanotis_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - gihanotis-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-gihanotis_user} -d ${DB_NAME:-gihanotis}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Flask Application
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gihanotis-web
+    restart: unless-stopped
+    environment:
+      # Database configuration
+      DB_HOST: db
+      DB_NAME: ${DB_NAME:-gihanotis}
+      DB_USER: ${DB_USER:-gihanotis_user}
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
+
+      # Admin credentials
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme123}
+
+      # Flask configuration
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      FLASK_ENV: ${FLASK_ENV:-development}
+    ports:
+      - "5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - gihanotis-network
+    volumes:
+      # Mount source code for development (comment out for production)
+      - ./app.py:/app/app.py
+      - ./config.py:/app/config.py
+      - ./db.py:/app/db.py
+      - ./validation.py:/app/validation.py
+      - ./templates:/app/templates
+      - ./static:/app/static
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/public/requests').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  gihanotis-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local

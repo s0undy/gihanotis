@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Resource Requests{% endblock %}
+
+{% block content %}
+<div class="text-center mb-5">
+    <h1>Crisis Resource Inventory</h1>
+    <p class="lead text-muted">Help your community by responding to resource requests</p>
+</div>
+
+{% if requests %}
+<div class="row">
+    {% for req in requests %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">{{ req.item_name }}</h5>
+            </div>
+            <div class="card-body">
+                <p class="card-text">
+                    <strong>Needed:</strong> {{ req.quantity_needed }} {{ req.unit }}
+                </p>
+
+                {% if req.description %}
+                <p class="card-text text-muted">
+                    {{ req.description }}
+                </p>
+                {% endif %}
+
+                <p class="text-muted small mb-3">
+                    <strong>Posted:</strong> {{ req.created_at.strftime('%Y-%m-%d %H:%M') }}
+                </p>
+
+                <a href="/respond/{{ req.id }}" class="btn btn-success w-100">
+                    I Can Help
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-5">
+    <div class="alert alert-info d-inline-block">
+        <h5>No Open Requests</h5>
+        <p class="mb-0">There are currently no open resource requests. Check back later.</p>
+    </div>
+</div>
+{% endif %}
+
+<div class="text-center mt-5">
+    <p class="text-muted">
+        Are you an administrator?
+        <a href="/admin">Login here</a>
+    </p>
+</div>
+{% endblock %}

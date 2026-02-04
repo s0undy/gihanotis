@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}Request Details - {{ request.item_name }}{% endblock %}
+
+{% block nav_items %}
+<li class="nav-item">
+    <a class="nav-link" href="/">Public View</a>
+</li>
+<li class="nav-item">
+    <a class="nav-link" href="/admin">Dashboard</a>
+</li>
+<li class="nav-item">
+    <button class="btn btn-link nav-link" id="logoutBtn">Logout</button>
+</li>
+{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+    <a href="/admin" class="btn btn-secondary">&larr; Back to Dashboard</a>
+</div>
+
+<!-- Request Details Card -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-primary text-white">
+        <h4 class="mb-0">Request #{{ request.id }} - {{ request.item_name }}</h4>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <strong>Item:</strong> {{ request.item_name }}
+            </div>
+            <div class="col-md-3">
+                <strong>Quantity Needed:</strong> {{ request.quantity_needed }} {{ request.unit }}
+            </div>
+            <div class="col-md-3">
+                <strong>Status:</strong>
+                {% if request.status == 'open' %}
+                    <span class="badge bg-success">Open</span>
+                {% else %}
+                    <span class="badge bg-secondary">Closed</span>
+                {% endif %}
+            </div>
+            <div class="col-md-3">
+                <strong>Created:</strong> {{ request.created_at.strftime('%Y-%m-%d %H:%M') }}
+            </div>
+        </div>
+
+        {% if request.description %}
+        <div class="row mt-3">
+            <div class="col-12">
+                <strong>Description:</strong>
+                <p class="mb-0">{{ request.description }}</p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Responses Card -->
+<div class="card shadow-sm">
+    <div class="card-header bg-success text-white">
+        <h5 class="mb-0">Responses ({{ responses|length }})</h5>
+    </div>
+    <div class="card-body">
+        {% if responses %}
+        <div class="row">
+            {% for response in responses %}
+            <div class="col-md-6 mb-3">
+                <div class="card {% if response.accepted %}border-primary{% else %}border-success{% endif %}">
+                    <div class="card-body">
+                        <h6 class="card-title">
+                            <span class="badge {% if response.accepted %}bg-primary{% else %}bg-success{% endif %}">
+                                {{ response.quantity_available }} {{ request.unit }} available
+                            </span>
+                            {% if response.accepted %}
+                            <span class="badge bg-info">Accepted</span>
+                            {% endif %}
+                        </h6>
+
+                        <p class="mb-2">
+                            <strong>Location:</strong> {{ response.location }}
+                        </p>
+
+                        {% if response.responder_name %}
+                        <p class="mb-2">
+                            <strong>Contact:</strong> {{ response.responder_name }}
+                            {% if response.responder_contact %}
+                                ({{ response.responder_contact }})
+                            {% endif %}
+                        </p>
+                        {% endif %}
+
+                        {% if response.notes %}
+                        <p class="mb-2">
+                            <strong>Notes:</strong> {{ response.notes }}
+                        </p>
+                        {% endif %}
+
+                        <small class="text-muted">
+                            Submitted: {{ response.created_at.strftime('%Y-%m-%d %H:%M') }}
+                        </small>
+
+                        <div class="mt-2">
+                            {% if not response.accepted %}
+                            <button class="btn btn-sm btn-primary accept-btn" data-response-id="{{ response.id }}">
+                                Accept Response
+                            </button>
+                            {% else %}
+                            <button class="btn btn-sm btn-warning unaccept-btn" data-response-id="{{ response.id }}">
+                                Unaccept
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Summary -->
+        <div class="alert alert-info mt-3">
+            {% set total = responses|sum(attribute='quantity_available') %}
+            {% set accepted_responses = responses|selectattr('accepted', 'equalto', true)|list %}
+            {% set accepted_total = accepted_responses|sum(attribute='quantity_available') %}
+            <strong>Total Available:</strong> {{ total }} {{ request.unit }}<br>
+            <strong>Accepted:</strong> {{ accepted_total }} {{ request.unit }}<br>
+            <strong>Still Needed:</strong> {{ request.quantity_needed }} {{ request.unit }}
+            {% if request.quantity_needed > 0 %}
+                ({{ ((accepted_total / (request.quantity_needed + accepted_total)) * 100)|round|int }}% fulfilled)
+            {% else %}
+                (100% fulfilled)
+            {% endif %}
+        </div>
+        {% else %}
+        <p class="text-muted">No responses yet. Share this request with the public to gather responses.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Logout
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+    try {
+        await apiFetch('/api/auth/logout', {
+            method: 'POST'
+        });
+
+        showToast('Logged out successfully', 'success');
+        setTimeout(() => window.location.href = '/admin/login', 500);
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+});
+
+// Accept response
+document.querySelectorAll('.accept-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+        const responseId = e.target.dataset.responseId;
+
+        if (!confirm('Accept this response? The request quantity will be updated.')) {
+            return;
+        }
+
+        setButtonLoading(btn, true, 'Accepting...');
+
+        try {
+            const data = await apiFetch(`/api/responses/${responseId}/accept`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            showToast(`Response accepted! New quantity needed: ${data.new_quantity_needed} {{ request.unit }}`, 'success');
+
+            // Update the UI directly
+            const card = btn.closest('.card');
+            card.classList.remove('border-success');
+            card.classList.add('border-primary');
+
+            const badge = card.querySelector('.badge');
+            badge.classList.remove('bg-success');
+            badge.classList.add('bg-primary');
+
+            // Add accepted badge
+            badge.insertAdjacentHTML('afterend', ' <span class="badge bg-info">Accepted</span>');
+
+            // Remove accept button
+            btn.parentElement.remove();
+
+            // Update quantity in header
+            document.querySelector('.col-md-3:nth-child(2)').innerHTML =
+                `<strong>Quantity Needed:</strong> ${data.new_quantity_needed} {{ request.unit }}`;
+
+            // Update summary
+            setTimeout(() => window.location.reload(), 1500);
+        } catch (error) {
+            showToast(error.message, 'error');
+            setButtonLoading(btn, false);
+        }
+    });
+});
+
+// Unaccept response
+document.querySelectorAll('.unaccept-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+        const responseId = e.target.dataset.responseId;
+
+        if (!confirm('Unaccept this response? The quantity will be added back to the request.')) {
+            return;
+        }
+
+        setButtonLoading(btn, true, 'Unaccepting...');
+
+        try {
+            const data = await apiFetch(`/api/responses/${responseId}/unaccept`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            showToast(`Response unaccepted! New quantity needed: ${data.new_quantity_needed} {{ request.unit }}`, 'warning');
+
+            // Reload to update all UI elements
+            setTimeout(() => window.location.reload(), 1000);
+        } catch (error) {
+            showToast(error.message, 'error');
+            setButtonLoading(btn, false);
+        }
+    });
+});
+</script>
+{% endblock %}
