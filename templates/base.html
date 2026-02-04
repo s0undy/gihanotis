@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{% block title %}GiHaNotis{% endblock %} - Crisis Resource Inventory</title>
 
     <!-- Bootstrap 5 CSS -->
@@ -131,9 +132,23 @@
             }
         }
 
-        // Better fetch with error handling
+        // Better fetch with error handling and CSRF support
         async function apiFetch(url, options = {}) {
             try {
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+
+                // Set default headers
+                const defaultHeaders = {
+                    'Content-Type': 'application/json',
+                };
+
+                // Add CSRF token for non-GET requests
+                if (csrfToken && options.method && options.method !== 'GET') {
+                    defaultHeaders['X-CSRFToken'] = csrfToken;
+                }
+
+                options.headers = { ...defaultHeaders, ...options.headers };
+
                 const response = await fetch(url, options);
                 const data = await response.json();
 

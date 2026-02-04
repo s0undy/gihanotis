@@ -19,6 +19,12 @@ GiHaNotis allows administrators to create resource requests (e.g., "need 5 shove
 - Optional responder contact information
 - Request status management (open/closed)
 - Responsive Bootstrap 5 UI
+- **Rate limiting** on login (5 attempts/minute)
+- **Session timeout** (8 hours)
+- **CSRF protection** for forms
+- **Pagination** on list endpoints
+- **Health check endpoint** at `/health`
+- **API documentation** at `/docs` (Scalar UI)
 
 ## Technology Stack
 
@@ -26,6 +32,9 @@ GiHaNotis allows administrators to create resource requests (e.g., "need 5 shove
 - **Database**: PostgreSQL 12+
 - **Frontend**: Jinja2 templates with Bootstrap 5
 - **Database Driver**: psycopg2 (raw SQL queries, no ORM)
+- **Rate Limiting**: Flask-Limiter
+- **CSRF Protection**: Flask-WTF
+- **API Docs**: Scalar (OpenAPI 3.0)
 - **Deployment**: Docker and Docker Compose support
 
 ## Quick Start with Docker
@@ -473,10 +482,22 @@ Submit a response to a request.
 ## Security Considerations
 
 - **SQL Injection**: All queries use parameterized statements
-- **XSS**: Jinja2 auto-escapes all variables
-- **CSRF**: Flask session management with secret key
+- **XSS**: Jinja2 auto-escapes + input sanitization via `sanitize_html()`
+- **CSRF**: Flask-WTF CSRFProtect with token validation
+- **Rate Limiting**: Login endpoint limited to 5 attempts/minute/IP
+- **Session Security**:
+  - HttpOnly cookies
+  - SameSite=Lax
+  - 8-hour automatic timeout
+- **Input Validation**: All text inputs sanitized before storage
 - **Authentication**: Session-based admin authentication
-- **Passwords**: Store securely in .env (use bcrypt for production)
+- **Passwords**: Store securely in .env
+
+## API Documentation
+
+Interactive API documentation is available at:
+- **Scalar UI**: http://localhost:5000/docs
+- **OpenAPI Spec**: http://localhost:5000/static/openapi.json
 
 ## Deployment
 

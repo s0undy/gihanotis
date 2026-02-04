@@ -4,6 +4,7 @@ Loads environment variables and provides configuration constants
 """
 
 import os
+from datetime import timedelta
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -33,6 +34,14 @@ class Config:
     SESSION_COOKIE_SAMESITE = 'Lax'
     # Set to True in production with HTTPS
     SESSION_COOKIE_SECURE = False
+
+    # Session timeout (8 hours)
+    PERMANENT_SESSION_LIFETIME = timedelta(hours=8)
+
+    # Rate limiting configuration
+    RATELIMIT_DEFAULT = "100 per hour"
+    RATELIMIT_STORAGE_URI = "memory://"
+    RATELIMIT_HEADERS_ENABLED = True
 
     @staticmethod
     def validate():

@@ -4,16 +4,30 @@ A simple Flask application for managing resource requests and responses during c
 """
 
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash
+from flask_wtf.csrf import CSRFProtect
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from functools import wraps
 import os
 import logging
 from config import Config
 from db import get_db_cursor, execute_query, execute_query_one, init_connection_pool
-from validation import validate_request_data, validate_response_data, ValidationError
+from validation import validate_request_data, validate_response_data, validate_pagination_params, ValidationError
 
 # Initialize Flask application
 app = Flask(__name__)
 app.config.from_object(Config)
+
+# Initialize CSRF protection
+csrf = CSRFProtect(app)
+
+# Initialize rate limiter
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["100 per hour"],
+    storage_uri="memory://"
+)
 
 # Initialize database connection pool
 init_connection_pool(minconn=2, maxconn=10)
@@ -57,6 +71,8 @@ def require_admin(f):
 # ============================================================================
 
 @app.route('/api/auth/login', methods=['POST'])
+@csrf.exempt
+@limiter.limit("5 per minute")
 def api_login():
     """Admin login endpoint - validates credentials and creates session"""
     data = request.get_json()
@@ -71,12 +87,14 @@ def api_login():
     if username == Config.ADMIN_USERNAME and password == Config.ADMIN_PASSWORD:
         session['is_admin'] = True
         session['username'] = username
+        session.permanent = True  # Enable session timeout
         return jsonify({'success': True, 'message': 'Login successful'})
     else:
         return jsonify({'error': 'Invalid username or password'}), 401
 
 
 @app.route('/api/auth/logout', methods=['POST'])
+@csrf.exempt
 def api_logout():
     """Admin logout endpoint - clears session"""
     session.clear()
@@ -99,22 +117,49 @@ def api_auth_status():
 @app.route('/api/requests', methods=['GET'])
 @require_admin
 def api_get_requests():
-    """Get all requests with response counts"""
+    """Get all requests with response counts (paginated)"""
     try:
+        # Parse and validate pagination parameters
+        page = request.args.get('page', 1)
+        per_page = request.args.get('per_page', 50)
+
+        try:
+            page, per_page = validate_pagination_params(page, per_page)
+        except ValidationError as e:
+            return jsonify({'error': str(e)}), 400
+
+        offset = (page - 1) * per_page
+
         query = """
             SELECT r.*, COUNT(resp.id) as response_count
             FROM requests r
             LEFT JOIN responses resp ON r.id = resp.request_id
             GROUP BY r.id
             ORDER BY r.created_at DESC
+            LIMIT %s OFFSET %s
         """
-        requests = execute_query(query)
-        return jsonify({'success': True, 'data': requests})
+        requests = execute_query(query, (per_page, offset))
+
+        # Get total count for pagination metadata
+        count_query = "SELECT COUNT(*) as total FROM requests"
+        total = execute_query_one(count_query)['total']
+
+        return jsonify({
+            'success': True,
+            'data': requests,
+            'pagination': {
+                'page': page,
+                'per_page': per_page,
+                'total': total,
+                'pages': (total + per_page - 1) // per_page
+            }
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/requests', methods=['POST'])
+@csrf.exempt
 @require_admin
 def api_create_request():
     """Create a new request"""
@@ -192,6 +237,7 @@ def api_get_request(request_id):
 
 
 @app.route('/api/requests/<int:request_id>', methods=['PUT'])
+@csrf.exempt
 @require_admin
 def api_update_request(request_id):
     """Update a request (e.g., change status to closed)"""
@@ -233,6 +279,7 @@ def api_update_request(request_id):
 
 
 @app.route('/api/requests/<int:request_id>', methods=['DELETE'])
+@csrf.exempt
 @require_admin
 def api_delete_request(request_id):
     """Delete a request"""
@@ -254,6 +301,7 @@ def api_delete_request(request_id):
 # ============================================================================
 
 @app.route('/api/responses/<int:response_id>/accept', methods=['POST'])
+@csrf.exempt
 @require_admin
 def api_accept_response(response_id):
     """Accept a response and update request quantity accordingly"""
@@ -311,6 +359,7 @@ def api_accept_response(response_id):
 
 
 @app.route('/api/responses/<int:response_id>/unaccept', methods=['POST'])
+@csrf.exempt
 @require_admin
 def api_unaccept_response(response_id):
     """Unaccept a response and restore request quantity"""
@@ -372,24 +421,50 @@ def api_unaccept_response(response_id):
 # ============================================================================
 
 @app.route('/api/public/requests', methods=['GET'])
-def api_get_public_requests():
-    """Get all open requests (public endpoint)"""
+async def api_get_public_requests():
+    """Get all open requests (public endpoint, paginated)"""
     try:
+        # Parse and validate pagination parameters
+        page = request.args.get('page', 1)
+        per_page = request.args.get('per_page', 50)
+
+        try:
+            page, per_page = validate_pagination_params(page, per_page)
+        except ValidationError as e:
+            return jsonify({'error': str(e)}), 400
+
+        offset = (page - 1) * per_page
+
         query = """
             SELECT id, item_name, quantity_needed, unit, description, created_at
             FROM requests
             WHERE status = 'open'
             ORDER BY created_at DESC
+            LIMIT %s OFFSET %s
         """
-        requests = execute_query(query)
-        return jsonify({'success': True, 'data': requests})
+        requests = execute_query(query, (per_page, offset))
+
+        # Get total count for pagination metadata
+        count_query = "SELECT COUNT(*) as total FROM requests WHERE status = 'open'"
+        total = execute_query_one(count_query)['total']
+
+        return jsonify({
+            'success': True,
+            'data': requests,
+            'pagination': {
+                'page': page,
+                'per_page': per_page,
+                'total': total,
+                'pages': (total + per_page - 1) // per_page
+            }
+        })
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/public/requests/<int:request_id>', methods=['GET'])
-def api_get_public_request(request_id):
+async def api_get_public_request(request_id):
     """Get a single open request (public endpoint)"""
     try:
         query = """
@@ -409,7 +484,8 @@ def api_get_public_request(request_id):
 
 
 @app.route('/api/public/requests/<int:request_id>/responses', methods=['POST'])
-def api_create_response(request_id):
+@csrf.exempt
+async def api_create_response(request_id):
     """Submit a response to a request (public endpoint)"""
     try:
         data = request.get_json()
@@ -567,6 +643,34 @@ def public_respond(request_id):
     except Exception as e:
         flash(f'Error loading request: {str(e)}', 'error')
         return redirect(url_for('public_index'))
+
+
+# ============================================================================
+# HEALTH CHECK & API DOCUMENTATION
+# ============================================================================
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint for monitoring and load balancers"""
+    try:
+        # Simple query to verify database connectivity
+        execute_query_one("SELECT 1 as check")
+        db_status = "connected"
+    except Exception:
+        db_status = "disconnected"
+
+    status = "ok" if db_status == "connected" else "degraded"
+
+    return jsonify({
+        'status': status,
+        'database': db_status
+    }), 200 if status == "ok" else 503
+
+
+@app.route('/docs')
+def api_docs():
+    """Scalar API documentation"""
+    return render_template('docs.html')
 
 
 # ============================================================================

@@ -31,6 +31,8 @@ def validate_request_data(data: Dict[str, Any]) -> None:
             raise ValidationError("Item name too long (max 255 characters)")
         if len(item_name) < 2:
             raise ValidationError("Item name too short (min 2 characters)")
+        # Sanitize HTML to prevent XSS
+        data['item_name'] = sanitize_html(item_name)
 
     # Quantity validation
     if 'quantity_needed' in data:
@@ -55,6 +57,8 @@ def validate_request_data(data: Dict[str, Any]) -> None:
         description = data['description']
         if len(description) > 5000:
             raise ValidationError("Description too long (max 5000 characters)")
+        # Sanitize HTML to prevent XSS
+        data['description'] = sanitize_html(description)
 
 
 def validate_response_data(data: Dict[str, Any]) -> None:
@@ -86,12 +90,16 @@ def validate_response_data(data: Dict[str, Any]) -> None:
             raise ValidationError("Location too long (max 500 characters)")
         if len(location) < 3:
             raise ValidationError("Location too short (min 3 characters)")
+        # Sanitize HTML to prevent XSS
+        data['location'] = sanitize_html(location)
 
     # Name validation
     if 'responder_name' in data and data['responder_name']:
         name = data['responder_name']
         if len(name) > 255:
             raise ValidationError("Name too long (max 255 characters)")
+        # Sanitize HTML to prevent XSS
+        data['responder_name'] = sanitize_html(name)
 
     # Contact validation
     if 'responder_contact' in data and data['responder_contact']:
@@ -104,6 +112,8 @@ def validate_response_data(data: Dict[str, Any]) -> None:
         notes = data['notes']
         if len(notes) > 2000:
             raise ValidationError("Notes too long (max 2000 characters)")
+        # Sanitize HTML to prevent XSS
+        data['notes'] = sanitize_html(notes)
 
 
 def sanitize_html(text: Optional[str]) -> Optional[str]:

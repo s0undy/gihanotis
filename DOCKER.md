@@ -131,9 +131,13 @@ docker volume prune
 ## Health Checks
 
 ```bash
-# Application health
-curl http://localhost:5000/api/public/requests
+# Application health endpoint
+curl http://localhost:5000/health
+# Response: {"status": "ok", "database": "connected"}
 
 # Database health
 docker-compose exec db pg_isready -U gihanotis_user
+
+# API Documentation
+# Open http://localhost:5000/docs in browser
 ```

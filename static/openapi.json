@@ -1,0 +1,477 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "GiHaNotis API",
+    "description": "Crisis Resource Inventory Management System API",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Current server"
+    }
+  ],
+  "tags": [
+    {"name": "Authentication", "description": "Admin authentication endpoints"},
+    {"name": "Admin Requests", "description": "Admin request management (requires authentication)"},
+    {"name": "Admin Responses", "description": "Admin response management (requires authentication)"},
+    {"name": "Public", "description": "Public endpoints (no authentication required)"},
+    {"name": "Health", "description": "Health check endpoint"}
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Health check",
+        "description": "Returns application and database health status",
+        "responses": {
+          "200": {
+            "description": "Application is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {"type": "string", "example": "ok"},
+                    "database": {"type": "string", "example": "connected"}
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Application is degraded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {"type": "string", "example": "degraded"},
+                    "database": {"type": "string", "example": "disconnected"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Admin login",
+        "description": "Authenticate as admin and create session",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "password"],
+                "properties": {
+                  "username": {"type": "string", "example": "admin"},
+                  "password": {"type": "string", "example": "password123"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean", "example": true},
+                    "message": {"type": "string", "example": "Login successful"}
+                  }
+                }
+              }
+            }
+          },
+          "400": {"description": "Missing credentials"},
+          "401": {"description": "Invalid credentials"},
+          "429": {"description": "Rate limit exceeded (5 attempts per minute)"}
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Admin logout",
+        "description": "Clear admin session",
+        "responses": {
+          "200": {
+            "description": "Logout successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean", "example": true},
+                    "message": {"type": "string", "example": "Logout successful"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/status": {
+      "get": {
+        "tags": ["Authentication"],
+        "summary": "Check authentication status",
+        "responses": {
+          "200": {
+            "description": "Authentication status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "authenticated": {"type": "boolean"},
+                    "username": {"type": "string", "nullable": true}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/requests": {
+      "get": {
+        "tags": ["Admin Requests"],
+        "summary": "Get all requests (paginated)",
+        "description": "Returns all requests with response counts. Requires admin authentication.",
+        "parameters": [
+          {"name": "page", "in": "query", "schema": {"type": "integer", "default": 1}, "description": "Page number"},
+          {"name": "per_page", "in": "query", "schema": {"type": "integer", "default": 50, "maximum": 100}, "description": "Items per page"}
+        ],
+        "responses": {
+          "200": {
+            "description": "List of requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "data": {"type": "array", "items": {"$ref": "#/components/schemas/Request"}},
+                    "pagination": {"$ref": "#/components/schemas/Pagination"}
+                  }
+                }
+              }
+            }
+          },
+          "401": {"description": "Authentication required"}
+        }
+      },
+      "post": {
+        "tags": ["Admin Requests"],
+        "summary": "Create a new request",
+        "description": "Create a new resource request. Requires admin authentication.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["item_name", "quantity_needed", "unit"],
+                "properties": {
+                  "item_name": {"type": "string", "minLength": 2, "maxLength": 255, "example": "Shovels"},
+                  "quantity_needed": {"type": "integer", "minimum": 0, "maximum": 1000000, "example": 5},
+                  "unit": {"type": "string", "maxLength": 50, "example": "pieces"},
+                  "description": {"type": "string", "maxLength": 5000, "example": "For debris removal"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Request created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "data": {"$ref": "#/components/schemas/Request"}
+                  }
+                }
+              }
+            }
+          },
+          "400": {"description": "Validation error"},
+          "401": {"description": "Authentication required"}
+        }
+      }
+    },
+    "/api/requests/{id}": {
+      "get": {
+        "tags": ["Admin Requests"],
+        "summary": "Get a single request with responses",
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Request with responses",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "data": {"$ref": "#/components/schemas/RequestWithResponses"}
+                  }
+                }
+              }
+            }
+          },
+          "401": {"description": "Authentication required"},
+          "404": {"description": "Request not found"}
+        }
+      },
+      "put": {
+        "tags": ["Admin Requests"],
+        "summary": "Update a request",
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "item_name": {"type": "string"},
+                  "quantity_needed": {"type": "integer"},
+                  "unit": {"type": "string"},
+                  "description": {"type": "string"},
+                  "status": {"type": "string", "enum": ["open", "closed"]}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {"description": "Request updated"},
+          "401": {"description": "Authentication required"},
+          "404": {"description": "Request not found"}
+        }
+      },
+      "delete": {
+        "tags": ["Admin Requests"],
+        "summary": "Delete a request",
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "responses": {
+          "200": {"description": "Request deleted"},
+          "401": {"description": "Authentication required"},
+          "404": {"description": "Request not found"}
+        }
+      }
+    },
+    "/api/responses/{id}/accept": {
+      "post": {
+        "tags": ["Admin Responses"],
+        "summary": "Accept a response",
+        "description": "Accept a response and update the request quantity accordingly",
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Response accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "message": {"type": "string"},
+                    "new_quantity_needed": {"type": "integer"}
+                  }
+                }
+              }
+            }
+          },
+          "400": {"description": "Response already accepted"},
+          "401": {"description": "Authentication required"},
+          "404": {"description": "Response not found"}
+        }
+      }
+    },
+    "/api/responses/{id}/unaccept": {
+      "post": {
+        "tags": ["Admin Responses"],
+        "summary": "Unaccept a response",
+        "description": "Unaccept a response and restore the request quantity",
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "responses": {
+          "200": {"description": "Response unaccepted"},
+          "400": {"description": "Response is not accepted"},
+          "401": {"description": "Authentication required"},
+          "404": {"description": "Response not found"}
+        }
+      }
+    },
+    "/api/public/requests": {
+      "get": {
+        "tags": ["Public"],
+        "summary": "Get all open requests (paginated)",
+        "description": "Returns all open resource requests. No authentication required.",
+        "parameters": [
+          {"name": "page", "in": "query", "schema": {"type": "integer", "default": 1}},
+          {"name": "per_page", "in": "query", "schema": {"type": "integer", "default": 50, "maximum": 100}}
+        ],
+        "responses": {
+          "200": {
+            "description": "List of open requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "data": {"type": "array", "items": {"$ref": "#/components/schemas/PublicRequest"}},
+                    "pagination": {"$ref": "#/components/schemas/Pagination"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/public/requests/{id}": {
+      "get": {
+        "tags": ["Public"],
+        "summary": "Get a single open request",
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "responses": {
+          "200": {"description": "Request details"},
+          "404": {"description": "Request not found or closed"}
+        }
+      }
+    },
+    "/api/public/requests/{id}/responses": {
+      "post": {
+        "tags": ["Public"],
+        "summary": "Submit a response to a request",
+        "description": "Submit an offer to help with a resource request. No authentication required.",
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["quantity_available", "location"],
+                "properties": {
+                  "quantity_available": {"type": "integer", "minimum": 1, "maximum": 1000000, "example": 2},
+                  "location": {"type": "string", "minLength": 3, "maxLength": 500, "example": "123 Main St"},
+                  "responder_name": {"type": "string", "maxLength": 255, "example": "John Doe"},
+                  "responder_contact": {"type": "string", "maxLength": 255, "example": "john@example.com"},
+                  "notes": {"type": "string", "maxLength": 2000, "example": "Can deliver tomorrow"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Response submitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "data": {"$ref": "#/components/schemas/Response"}
+                  }
+                }
+              }
+            }
+          },
+          "400": {"description": "Validation error"},
+          "404": {"description": "Request not found or closed"}
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Request": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "item_name": {"type": "string"},
+          "quantity_needed": {"type": "integer"},
+          "unit": {"type": "string"},
+          "description": {"type": "string"},
+          "status": {"type": "string", "enum": ["open", "closed"]},
+          "created_at": {"type": "string", "format": "date-time"},
+          "response_count": {"type": "integer"}
+        }
+      },
+      "PublicRequest": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "item_name": {"type": "string"},
+          "quantity_needed": {"type": "integer"},
+          "unit": {"type": "string"},
+          "description": {"type": "string"},
+          "created_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "RequestWithResponses": {
+        "allOf": [
+          {"$ref": "#/components/schemas/Request"},
+          {
+            "type": "object",
+            "properties": {
+              "responses": {"type": "array", "items": {"$ref": "#/components/schemas/Response"}}
+            }
+          }
+        ]
+      },
+      "Response": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "request_id": {"type": "integer"},
+          "responder_name": {"type": "string", "nullable": true},
+          "responder_contact": {"type": "string", "nullable": true},
+          "quantity_available": {"type": "integer"},
+          "location": {"type": "string"},
+          "notes": {"type": "string", "nullable": true},
+          "accepted": {"type": "boolean"},
+          "created_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "Pagination": {
+        "type": "object",
+        "properties": {
+          "page": {"type": "integer"},
+          "per_page": {"type": "integer"},
+          "total": {"type": "integer"},
+          "pages": {"type": "integer"}
+        }
+      }
+    }
+  }
+}
