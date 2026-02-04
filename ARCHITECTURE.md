@@ -24,6 +24,15 @@ GiHaNotis is a web application for managing resource needs during crises (like n
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
+│                    NGINX REVERSE PROXY                      │
+│                      (Port 80 only)                         │
+│                                                             │
+│   The "front door" - only part accessible from internet     │
+│   Adds security headers, handles compression                │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼ (internal network only)
+┌─────────────────────────────────────────────────────────────┐
 │                     WEB APPLICATION                         │
 │                     (Flask Server)                          │
 │                                                             │
@@ -31,7 +40,7 @@ GiHaNotis is a web application for managing resource needs during crises (like n
 │   enforces security rules, and manages sessions             │
 └─────────────────────────────────────────────────────────────┘
                               │
-                              ▼
+                              ▼ (internal network only)
 ┌─────────────────────────────────────────────────────────────┐
 │                       DATABASE                              │
 │                     (PostgreSQL)                            │
@@ -42,7 +51,7 @@ GiHaNotis is a web application for managing resource needs during crises (like n
 
 ---
 
-## The Three Main Parts
+## The Four Main Parts
 
 ### 1. User Interface (What People See)
 
@@ -52,7 +61,15 @@ GiHaNotis is a web application for managing resource needs during crises (like n
 | **Admin Dashboard** | Coordinators (with login) | Create requests, manage responses |
 | **API Documentation** | Developers | Understand how to integrate |
 
-### 2. Web Server (The "Brain")
+### 2. Nginx Reverse Proxy (The "Front Door")
+
+The only part accessible from outside:
+- Receives all incoming requests on port 80
+- Adds security headers to protect users
+- Forwards requests to the Flask application
+- Hides the internal structure from attackers
+
+### 3. Web Server (The "Brain")
 
 The server processes all requests and makes sure:
 - Only authorized users can access admin features
@@ -60,7 +77,7 @@ The server processes all requests and makes sure:
 - Requests and responses are properly stored
 - Pages load quickly
 
-### 3. Database (The "Memory")
+### 4. Database (The "Memory")
 
 Stores two types of information:
 
@@ -108,11 +125,14 @@ Stores two types of information:
 
 | Protection | What It Does |
 |------------|--------------|
+| **Nginx Isolation** | Only port 80 is exposed; database and app are hidden |
+| **Content Security Policy** | Blocks unauthorized scripts and resources |
 | **Login Required** | Only coordinators can create/manage requests |
 | **Rate Limiting** | Prevents spam (max 5 login attempts per minute) |
 | **Session Timeout** | Auto-logout after 8 hours of inactivity |
 | **Input Sanitization** | Removes harmful code from user submissions |
 | **CSRF Protection** | Prevents fake form submissions |
+| **Security Headers** | X-Frame-Options, X-Content-Type-Options protect browsers |
 
 ---
 
@@ -131,6 +151,7 @@ Stores two types of information:
 
 | Component | Technology | Purpose |
 |-----------|------------|---------|
+| Reverse Proxy | Nginx | Front door, security headers |
 | Web Framework | Flask (Python) | Handles web requests |
 | Database | PostgreSQL | Stores data |
 | Frontend | Bootstrap 5 | Makes pages look nice |
@@ -142,13 +163,16 @@ Stores two types of information:
 
 ```
 GiHaNotis/
-├── app.py           ← Main application logic
-├── config.py        ← Settings and configuration
-├── db.py            ← Database connection handling
-├── validation.py    ← Data validation rules
-├── templates/       ← HTML page templates
-├── static/          ← CSS styles and API spec
-└── docker files     ← Container deployment
+├── app.py              ← Main application logic
+├── config.py           ← Settings and configuration
+├── db.py               ← Database connection handling
+├── validation.py       ← Data validation rules
+├── docker-compose.yml  ← Container orchestration
+├── nginx/              ← Reverse proxy config
+│   └── nginx.conf
+├── templates/          ← HTML page templates
+├── static/             ← CSS styles and API spec
+└── Dockerfile          ← Flask container build
 ```
 
 ---

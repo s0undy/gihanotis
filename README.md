@@ -25,6 +25,8 @@ GiHaNotis allows administrators to create resource requests (e.g., "need 5 shove
 - **Pagination** on list endpoints
 - **Health check endpoint** at `/health`
 - **API documentation** at `/docs` (Scalar UI)
+- **Content Security Policy (CSP)** headers
+- **Nginx reverse proxy** (only exposed port)
 
 ## Technology Stack
 
@@ -35,6 +37,7 @@ GiHaNotis allows administrators to create resource requests (e.g., "need 5 shove
 - **Rate Limiting**: Flask-Limiter
 - **CSRF Protection**: Flask-WTF
 - **API Docs**: Scalar (OpenAPI 3.0)
+- **Reverse Proxy**: Nginx (Alpine)
 - **Deployment**: Docker and Docker Compose support
 
 ## Quick Start with Docker
@@ -52,9 +55,10 @@ nano .env  # Set SECRET_KEY, DB_PASSWORD, ADMIN_PASSWORD
 # 3. Start all services
 docker-compose up -d
 
-# 4. Access the application
-# Public:  http://localhost:5000/
-# Admin:   http://localhost:5000/admin
+# 4. Access the application (via Nginx on port 80)
+# Public:  http://localhost/
+# Admin:   http://localhost/admin
+# Health:  http://localhost/health
 ```
 
 See [DOCKER.md](DOCKER.md) for database backup/restore and production deployment.
@@ -70,11 +74,14 @@ GiHaNotis/
 ├── requirements.txt    # Python dependencies
 ├── schema.sql          # Database schema
 ├── .env.example        # Environment template
+├── docker-compose.yml  # Docker services configuration
+├── nginx/              # Nginx reverse proxy
+│   └── nginx.conf      # Nginx configuration
 ├── templates/          # Jinja2 templates
 │   ├── base.html
 │   ├── admin/          # Admin interface
 │   └── public/         # Public interface
-└── static/css/         # Stylesheets
+└── static/             # Static files (CSS, OpenAPI spec)
 ```
 
 ## Setup Instructions (Native Installation)
@@ -489,6 +496,13 @@ Submit a response to a request.
   - HttpOnly cookies
   - SameSite=Lax
   - 8-hour automatic timeout
+  - Secure cookies in production
+- **Content Security Policy (CSP)**: Restricts resource loading to trusted sources
+- **Security Headers**: X-Frame-Options, X-Content-Type-Options, X-XSS-Protection
+- **Nginx Reverse Proxy**:
+  - Flask (port 5000) internal only
+  - PostgreSQL (port 5432) internal only
+  - Only port 80 (Nginx) exposed externally
 - **Input Validation**: All text inputs sanitized before storage
 - **Authentication**: Session-based admin authentication
 - **Passwords**: Store securely in .env
@@ -496,8 +510,8 @@ Submit a response to a request.
 ## API Documentation
 
 Interactive API documentation is available at:
-- **Scalar UI**: http://localhost:5000/docs
-- **OpenAPI Spec**: http://localhost:5000/static/openapi.json
+- **Scalar UI**: http://localhost/docs
+- **OpenAPI Spec**: http://localhost/static/openapi.json
 
 ## Deployment
 
@@ -505,11 +519,12 @@ For production deployment:
 
 1. Set `FLASK_ENV=production` in `.env`
 2. Generate a strong SECRET_KEY
-3. Use a production WSGI server (gunicorn, uwsgi)
-4. Set up nginx as reverse proxy
-5. Enable HTTPS
-6. Set `SESSION_COOKIE_SECURE=True` in config.py
-7. Configure PostgreSQL with proper access controls
+3. Use Docker Compose (Nginx reverse proxy included)
+4. For HTTPS: Add SSL certificates to Nginx config
+5. Secure cookies auto-enabled in production mode
+6. Configure PostgreSQL with proper access controls
+
+**Note:** The Docker setup already includes Nginx as reverse proxy. Flask and PostgreSQL are internal-only (not exposed to host).
 
 ### Example with Gunicorn
 

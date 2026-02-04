@@ -5,6 +5,30 @@
 - Docker 20.10+
 - Docker Compose 2.0+
 
+## Architecture
+
+```
+                    INTERNET
+                        │
+                        ▼
+               ┌────────────────┐
+               │     NGINX      │  ← Only externally accessible (port 80)
+               │   (port 80)    │
+               └───────┬────────┘
+                       │
+        ───────────────┼─────────────── internal network
+                       │
+          ┌────────────┴────────────┐
+          ▼                         ▼
+   ┌──────────────┐         ┌──────────────┐
+   │  Flask App   │────────▶│  PostgreSQL  │
+   │ (port 5000)  │         │ (port 5432)  │
+   │   internal   │         │   internal   │
+   └──────────────┘         └──────────────┘
+```
+
+**Security:** Flask and PostgreSQL are NOT exposed to the host. Only Nginx (port 80) is accessible externally.
+
 ## Quick Start
 
 ```bash
@@ -18,9 +42,10 @@ nano .env  # Set SECRET_KEY, DB_PASSWORD, ADMIN_PASSWORD
 # 3. Start services
 docker-compose up -d
 
-# 4. Access application
-# Public:  http://localhost:5000/
-# Admin:   http://localhost:5000/admin
+# 4. Access application (via Nginx)
+# Public:  http://localhost/
+# Admin:   http://localhost/admin
+# Docs:    http://localhost/docs
 ```
 
 ## Common Commands
@@ -35,6 +60,7 @@ docker-compose down -v   # Also remove data volume
 # View logs
 docker-compose logs -f
 docker-compose logs -f web
+docker-compose logs -f nginx
 
 # Rebuild after code changes
 docker-compose up -d --build
@@ -78,17 +104,26 @@ DB_PASSWORD=<strong-password>
 ADMIN_PASSWORD=<strong-password>
 ```
 
-### 2. Use Gunicorn
+### 2. HTTPS (Optional)
 
-Add to Dockerfile:
-```dockerfile
-RUN pip install gunicorn
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "app:app"]
+To enable HTTPS, update `nginx/nginx.conf`:
+
+```nginx
+server {
+    listen 443 ssl;
+    ssl_certificate /etc/nginx/ssl/cert.pem;
+    ssl_certificate_key /etc/nginx/ssl/key.pem;
+    # ... rest of config
+}
 ```
 
-### 3. Add Nginx (Optional)
-
-For HTTPS and better performance, add nginx as a reverse proxy.
+Add SSL volume to docker-compose.yml:
+```yaml
+nginx:
+  volumes:
+    - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    - ./ssl:/etc/nginx/ssl:ro
+```
 
 ## Troubleshooting
 
@@ -96,6 +131,7 @@ For HTTPS and better performance, add nginx as a reverse proxy.
 
 ```bash
 docker-compose logs web
+docker-compose logs nginx
 docker-compose exec web env | grep DB_
 ```
 
@@ -109,9 +145,10 @@ docker-compose exec db pg_isready -U gihanotis_user
 ### Port Already in Use
 
 ```bash
-sudo lsof -i :5000
+sudo lsof -i :80
 # Or change port in docker-compose.yml:
-# ports: ["8080:5000"]
+# nginx:
+#   ports: ["8080:80"]
 ```
 
 ### Permission Errors
@@ -131,13 +168,27 @@ docker volume prune
 ## Health Checks
 
 ```bash
-# Application health endpoint
-curl http://localhost:5000/health
+# Application health endpoint (via Nginx)
+curl http://localhost/health
 # Response: {"status": "ok", "database": "connected"}
+
+# Check security headers
+curl -I http://localhost/ | grep -i "content-security-policy\|x-frame"
 
 # Database health
 docker-compose exec db pg_isready -U gihanotis_user
 
+# Container status
+docker-compose ps
+
 # API Documentation
-# Open http://localhost:5000/docs in browser
+# Open http://localhost/docs in browser
 ```
+
+## Services
+
+| Service | Container | Internal Port | External Port |
+|---------|-----------|---------------|---------------|
+| Nginx | gihanotis-nginx | 80 | **80** (exposed) |
+| Flask | gihanotis-web | 5000 | None (internal) |
+| PostgreSQL | gihanotis-db | 5432 | None (internal) |
